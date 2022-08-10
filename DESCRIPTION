@@ -6,5 +6,6 @@ Date: 2022-04-14
 Authors: Byron Botha
 Maintainer: Byron Botha <byron@codera.co.za>
 Description: Automation of time series uploads and downloads to and from www.econdata.co.za.
-Depends: httr, jsonlite, xml2, tcltk
+Depends: httr, jsonlite, xml2
+Suggests: tcltk
 License: GPL-2
