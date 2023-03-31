@@ -1,5 +1,4 @@
 
-
 unit_mult_switch <- function(x) switch(x, "3" = " Thousand", "6" = " Million", "9" = " Billion", "12" = " Trillion", x)
 
 # http://www.southafrica-canada.ca/south-africas-nine-provinces/
@@ -10,20 +9,36 @@ province_switch <- function(x) switch(x,
 
 null2NA <- function(x) if(is.null(x)) NA_character_ else x
 
-# Check using app: https://www.econdata.co.za/app
-econdata_make_label <- function(x, codelabel) {
-  m <- attr(x, "metadata")
-  PROVINCE <- if(length(m$PROVINCE)) m$PROVINCE else m$REGION
+make_meta_label <- function(m, meta) {
+  lab <- NULL
+  for (l in names(m)) {
+    if(meta[[l]]$is_dimension) {
+      cl <- unclass(meta[[l]]$codelist$codes)
+      lab <- c(lab, cl[[2L]][which(cl[[1L]] == m[[l]])])
+    }
+  }
+  return(paste(lab, collapse = ": "))
+}
 
-  lab <- paste0(if(codelabel && length(m$SOURCE_IDENTIFIER)) paste0(m$SOURCE_IDENTIFIER, ":= ") else "",
-                m$LABEL,
-                if(length(m$COMMENT) && nchar(m$COMMENT) < 80L) paste0(": ", m$COMMENT) else "",
-                if(length(PROVINCE)) paste0(": ", province_switch(PROVINCE)) else "",
-                if(length(m$DISTRICT)) paste0(": ", m$DISTRICT) else ""," (",
-                m$UNIT_MEASURE,
-                if(length(m$UNIT_MULT)) unit_mult_switch(m$UNIT_MULT) else "",
-                if(length(m$BASE_PER)) paste(", Base =", m$BASE_PER) else "",
-                if(length(m$SEASONAL_ADJUST) && m$SEASONAL_ADJUST == "S") ", Seasonally Adjusted)" else ")")
+# Check using app: https://www.econdata.co.za/app
+econdata_make_label <- function(x, codelabel, meta) {
+
+  m <- attr(x, "metadata")
+
+  if(!is.null(meta)) {
+    lab <- make_meta_label(m, meta)
+  } else { # Hard coded label: as before
+    PROVINCE <- if(length(m$PROVINCE)) m$PROVINCE else m$REGION
+    lab <- paste0(if(codelabel && length(m$SOURCE_IDENTIFIER)) paste0(m$SOURCE_IDENTIFIER, ":= ") else "",
+                  m$LABEL,
+                  if(length(m$COMMENT) && nchar(m$COMMENT) < 80L) paste0(": ", m$COMMENT) else "",
+                  if(length(PROVINCE)) paste0(": ", province_switch(PROVINCE)) else "",
+                  if(length(m$DISTRICT)) paste0(": ", m$DISTRICT) else ""," (",
+                  m$UNIT_MEASURE,
+                  if(length(m$UNIT_MULT)) unit_mult_switch(m$UNIT_MULT) else "",
+                  if(length(m$BASE_PER)) paste(", Base =", m$BASE_PER) else "",
+                  if(length(m$SEASONAL_ADJUST) && m$SEASONAL_ADJUST == "S") ", Seasonally Adjusted)" else ")")
+  }
 
   return(c(lab, null2NA(m$SOURCE_IDENTIFIER)))
 }
@@ -35,12 +50,13 @@ add_version_names <- function(x, elem = "Dataflow") {
   return(x)
 }
 
-econdata_wide <- function(x, codelabel = FALSE, ...) {
-  if(is.null(attributes(x))) return(lapply(add_version_names(x), econdata_wide, codelabel))
+econdata_wide <- function(x, codelabel = FALSE, prettymeta = TRUE, ...) {
+  if(is.null(attributes(x))) return(lapply(add_version_names(x), econdata_wide, codelabel, prettymeta))
+  meta <- if(prettymeta) get_metadata(x) else NULL
   d <- unlist2d(x, "code", row.names = "date", DT = TRUE) |>
     dcast(date ~ code, value.var = "OBS_VALUE") |>
     fmutate(date = as.Date(date))
-  labs <- sapply(x, econdata_make_label, codelabel)
+  labs <- sapply(x, econdata_make_label, codelabel, meta)
   nam <- names(d)[-1L]
   vlabels(d) <- c("Date", labs[1L, nam])
   vlabels(d, "source.code")[-1L] <- labs[2L, nam]
@@ -49,33 +65,77 @@ econdata_wide <- function(x, codelabel = FALSE, ...) {
 }
 
 
-econdata_extract_metadata <- function(x, allmeta, origmeta) {
+econdata_extract_metadata <- function(x, allmeta, origmeta, meta) {
   if(!allmeta && length(x) == 0L) return(NULL) # Omits non-observed series.
-  if(origmeta) return(attr(x, "metadata"))
   m <- attr(x, "metadata")
-  PROVINCE <- if(length(m$PROVINCE)) m$PROVINCE else m$REGION
+  if(origmeta && is.null(meta)) return(m)
+
+  if(origmeta) {
+    out <- list()
+    for (p in names(m)) {
+      cc_nam <- meta[[p]]$concept$name
+      cl <- meta[[p]]$codelist
+      if(!is.null(cl)) {
+        cl <- unclass(cl$codes)
+        out[[gsub(" ", "_", tolower(cc_nam))]] <- cl[[2L]][which(cl[[1L]] == m[[p]])]
+      } else {
+        out[[gsub(" ", "_", tolower(cc_nam))]] <- m[[p]]
+      }
+    }
+    return(out)
+  }
+
+  # Hard coded metadata, as before...
+  if(is.null(meta)) {
+    PROVINCE <- if(length(m$PROVINCE)) m$PROVINCE else m$REGION
+    return(list(source_code = null2NA(m$SOURCE_IDENTIFIER),
+                frequency = null2NA(m$FREQ),
+                label = null2NA(m$LABEL),
+                province = if(length(PROVINCE)) province_switch(PROVINCE) else NA_character_,
+                district = null2NA(m$DISTRICT),
+                unit_measure = null2NA(m$UNIT_MEASURE),
+                unit_mult = if(length(m$UNIT_MULT)) unit_mult_switch(m$UNIT_MULT) else NA_character_,
+                base_period = null2NA(m$BASE_PER),
+                seas_adjust = null2NA(m$SEASONAL_ADJUST),
+                comment = null2NA(m$COMMENT)))
+  }
+
+  #    codes                                             code_names
+  # 1      T                                                  Trend
+  # 2      C                    Trend-cycle data, calendar adjusted
+  # 3      R                Trend-cycle data, not calendar adjusted
+  # 4      K                                     Calendar component
+  # 5      X                                     Seasonal component
+  # 6      M                       Seasonal and calendar components
+  # 7      I                                    Irregular component
+  # 8      N Neither seasonally adjusted nor calendar adjusted data
+  # 9      S        Seasonally adjusted data, not calendar adjusted
+  # 10     W        Calendar adjusted data, not seasonally adjusted
+  # 11     Y                  Calendar and seasonally adjusted data
+
+  # Now hybrid hard-coded format...
   return(list(source_code = null2NA(m$SOURCE_IDENTIFIER),
               frequency = null2NA(m$FREQ),
-              label = null2NA(m$LABEL),
-              province = if(length(PROVINCE)) province_switch(PROVINCE) else NA_character_,
-              district = null2NA(m$DISTRICT),
+              label = make_meta_label(m[names(m) %!in% c("FREQ", "SOURCE_IDENTIFIER", "SEASONAL_ADJUST", "UNIT_MEASURE", "UNIT_MULT", "BASE_PER", "COMMENT")], meta),
               unit_measure = null2NA(m$UNIT_MEASURE),
-              unit_mult = if(length(m$UNIT_MULT)) unit_mult_switch(m$UNIT_MULT) else NA_character_,
+              unit_mult = if(length(m$UNIT_MULT)) make_meta_label(m["UNIT_MULT"], meta) else NA_character_,
               base_period = null2NA(m$BASE_PER),
               seas_adjust = null2NA(m$SEASONAL_ADJUST),
               comment = null2NA(m$COMMENT)))
+
 }
 
-econdata_long <- function(x, combine = FALSE, allmeta = FALSE, origmeta = FALSE, ...) {
+econdata_long <- function(x, combine = FALSE, allmeta = FALSE, origmeta = FALSE, prettymeta = TRUE, ...) {
   if(is.null(attributes(x))) {
-    res <- lapply(add_version_names(x), econdata_long, combine, allmeta, origmeta)
+    res <- lapply(add_version_names(x), econdata_long, combine, allmeta, origmeta, prettymeta)
     return(if(combine) rbindlist(res, use.names = TRUE, fill = TRUE) else res)
   }
+  meta <- if(prettymeta) get_metadata(x) else NULL
   d <- unlist2d(x, "code", row.names = "date", DT = TRUE) |>
        fmutate(date = as.Date(date), code = qF(code)) |>
        frename(OBS_VALUE = "value")
   m <- attr(x, "metadata")
-  meta <- lapply(x, econdata_extract_metadata, allmeta && !combine, origmeta) |>
+  meta <- lapply(x, econdata_extract_metadata, allmeta && !combine, origmeta, meta) |>
           rbindlist(use.names = origmeta, fill = origmeta)
   if(origmeta) names(meta) <- tolower(names(meta))
   meta$code <- if(allmeta && !combine) names(x) else names(x)[names(x) %in% levels(d$code)]
