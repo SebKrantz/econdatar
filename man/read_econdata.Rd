@@ -40,6 +40,8 @@ econdata_tidy(x, \dots)
 
     \code{allmeta} \tab\tab logical, default: \code{FALSE}. If \code{wide = FALSE}, setting \code{allmeta = TRUE} always returns the full set of metadata fields, regardless of whether they are recorded for the given dataset. It is also possible that there are series with zero observations in a dataset. Such series are dropped in tidy output, but if \code{combine = FALSE}, \code{allmeta = TRUE} retains their metadata in the metadata table. \cr\cr\cr\cr
 
+    \code{prettymeta} \tab\tab logical, default: \code{TRUE}. Attempts to make the returned metadata more human readable replacing each code category and enumeration with its name. It is advisable to leave this set to \code{TRUE}, in some cases, where speed is paramount you may want to set this flag to \code{FALSE}. If multiple datasets are being querioed this option is automatically set to \code{FALSE}. \cr\cr\cr\cr
+
    \code{release} \tab\tab logical, default: \code{FALSE}. \code{TRUE} allows you to apply \code{econdata_tidy()} to objects returned by \code{read_release()}.
 }
 }
