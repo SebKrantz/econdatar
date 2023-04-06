@@ -32,7 +32,7 @@ econdata_tidy(x, \dots)
   \tabular{llll}{
     \code{wide} \tab\tab logical, default: \code{TRUE}. Returns data in a column-based format, with \code{"label"} and \code{"source.code"} attributes to columns and an overall "metadata" attribute to the table, otherwise a long-format is returned. See Value. \cr\cr\cr\cr
 
-    \code{codelabel} \tab\tab logical, default: \code{FALSE}. If \code{wide = TRUE}, setting \code{codelabel = TRUE} will add the source identifier at the beginning of the \code{"label"}, in addition to being attached as a \code{"source.code"} attribute. \cr\cr\cr\cr
+%    \code{codelabel} \tab\tab logical, default: \code{FALSE}. If \code{wide = TRUE}, setting \code{codelabel = TRUE} will add the source identifier at the beginning of the \code{"label"}, in addition to being attached as a \code{"source.code"} attribute. \cr\cr\cr\cr
 
     \code{combine} \tab\tab logical, default: \code{FALSE}. If \code{wide = FALSE}, setting \code{combine = TRUE} will combine all data and metadata into a single long table, whereas the default \code{FALSE} will return data and metadata in separate tables, for more efficient storage. \cr\cr\cr\cr
 
@@ -41,6 +41,8 @@ econdata_tidy(x, \dots)
     \code{allmeta} \tab\tab logical, default: \code{FALSE}. If \code{wide = FALSE}, setting \code{allmeta = TRUE} always returns the full set of metadata fields, regardless of whether they are recorded for the given dataset. It is also possible that there are series with zero observations in a dataset. Such series are dropped in tidy output, but if \code{combine = FALSE}, \code{allmeta = TRUE} retains their metadata in the metadata table. \cr\cr\cr\cr
 
     \code{prettymeta} \tab\tab logical, default: \code{TRUE}. Attempts to make the returned metadata more human readable replacing each code category and enumeration with its name. It is advisable to leave this set to \code{TRUE}, in some cases, where speed is paramount you may want to set this flag to \code{FALSE}. If multiple datasets are being querioed this option is automatically set to \code{FALSE}. \cr\cr\cr\cr
+
+    \code{conceptname} \tab\tab logical, default: \code{TRUE}. If \code{prettymeta = TRUE} this will combine the names of the metadata concepts and the metadata content into a label, e.g. for regional data, the label will include "Province: Western Cape" instead of simply "Western Cape". This is useful especially for numeric metatdata. \cr\cr\cr\cr
 
    \code{release} \tab\tab logical, default: \code{FALSE}. \code{TRUE} allows you to apply \code{econdata_tidy()} to objects returned by \code{read_release()}.
 }

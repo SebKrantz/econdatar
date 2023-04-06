@@ -9,28 +9,39 @@ province_switch <- function(x) switch(x,
 
 null2NA <- function(x) if(is.null(x)) NA_character_ else x
 
-make_meta_label <- function(m, meta) {
+make_meta_label <- function(m, meta, conceptname = TRUE) {
   lab <- NULL
-  for (l in names(m)) {
-    if(meta[[l]]$is_dimension) {
-      cl <- unclass(meta[[l]]$codelist$codes)
-      lab <- c(lab, cl[[2L]][which(cl[[1L]] == m[[l]])])
+  if(conceptname) {
+    for (l in names(m)) {
+      ml <- meta[[l]]
+      if(ml$is_dimension) {
+        cl <- unclass(ml$codelist$codes)
+        add <- cl[[2L]][which(cl[[1L]] == m[[l]])]
+        if(l != "MNEMONIC" && length(cn <- ml$concept$name)) add <- paste(cn, add, sep = ": ")
+        lab <- c(lab, add)
+      }
+    }
+  } else {
+    for (l in names(m)) {
+      if(meta[[l]]$is_dimension) {
+        cl <- unclass(meta[[l]]$codelist$codes)
+        lab <- c(lab, cl[[2L]][which(cl[[1L]] == m[[l]])])
+      }
     }
   }
-  return(paste(lab, collapse = ": "))
+  return(paste(lab, collapse = ", "))
 }
 
 # Check using app: https://www.econdata.co.za/app
-econdata_make_label <- function(x, codelabel, meta) {
+econdata_make_label <- function(x, meta, conceptname) {
 
   m <- attr(x, "metadata")
 
   if(!is.null(meta)) {
-    lab <- make_meta_label(m, meta)
+    lab <- make_meta_label(m, meta, conceptname)
   } else { # Hard coded label: as before
     PROVINCE <- if(length(m$PROVINCE)) m$PROVINCE else m$REGION
-    lab <- paste0(if(codelabel && length(m$SOURCE_IDENTIFIER)) paste0(m$SOURCE_IDENTIFIER, ":= ") else "",
-                  m$LABEL,
+    lab <- paste0(m$LABEL,
                   if(length(m$COMMENT) && nchar(m$COMMENT) < 80L) paste0(": ", m$COMMENT) else "",
                   if(length(PROVINCE)) paste0(": ", province_switch(PROVINCE)) else "",
                   if(length(m$DISTRICT)) paste0(": ", m$DISTRICT) else ""," (",
@@ -50,13 +61,13 @@ add_version_names <- function(x, elem = "Dataflow") {
   return(x)
 }
 
-econdata_wide <- function(x, codelabel = FALSE, prettymeta = TRUE, ...) {
-  if(is.null(attributes(x))) return(lapply(add_version_names(x), econdata_wide, codelabel, prettymeta))
+econdata_wide <- function(x, prettymeta = TRUE, conceptname = TRUE, ...) {
+  if(is.null(attributes(x))) return(lapply(add_version_names(x), econdata_wide, prettymeta, conceptname))
   meta <- if(prettymeta) get_metadata(x) else NULL
   d <- unlist2d(x, "code", row.names = "date", DT = TRUE) |>
     dcast(date ~ code, value.var = "OBS_VALUE") |>
     fmutate(date = as.Date(date))
-  labs <- sapply(x, econdata_make_label, codelabel, meta)
+  labs <- sapply(x, econdata_make_label, meta, conceptname)
   nam <- names(d)[-1L]
   vlabels(d) <- c("Date", labs[1L, nam])
   vlabels(d, "source.code")[-1L] <- labs[2L, nam]
@@ -65,7 +76,7 @@ econdata_wide <- function(x, codelabel = FALSE, prettymeta = TRUE, ...) {
 }
 
 
-econdata_extract_metadata <- function(x, allmeta, origmeta, meta) {
+econdata_extract_metadata <- function(x, allmeta, origmeta, meta, conceptname) {
   if(!allmeta && length(x) == 0L) return(NULL) # Omits non-observed series.
   m <- attr(x, "metadata")
   if(origmeta && is.null(meta)) return(m)
@@ -116,18 +127,18 @@ econdata_extract_metadata <- function(x, allmeta, origmeta, meta) {
   # Now hybrid hard-coded format...
   return(list(source_code = null2NA(m$SOURCE_IDENTIFIER),
               frequency = null2NA(m$FREQ),
-              label = make_meta_label(m[names(m) %!in% c("FREQ", "SOURCE_IDENTIFIER", "SEASONAL_ADJUST", "UNIT_MEASURE", "UNIT_MULT", "BASE_PER", "COMMENT")], meta),
+              label = make_meta_label(m[names(m) %!in% c("FREQ", "SOURCE_IDENTIFIER", "SEASONAL_ADJUST", "UNIT_MEASURE", "UNIT_MULT", "BASE_PER", "COMMENT")], meta, conceptname),
               unit_measure = null2NA(m$UNIT_MEASURE),
-              unit_mult = if(length(m$UNIT_MULT)) make_meta_label(m["UNIT_MULT"], meta) else NA_character_,
+              unit_mult = if(length(m$UNIT_MULT)) make_meta_label(m["UNIT_MULT"], meta, FALSE) else NA_character_,
               base_period = null2NA(m$BASE_PER),
               seas_adjust = null2NA(m$SEASONAL_ADJUST),
               comment = null2NA(m$COMMENT)))
 
 }
 
-econdata_long <- function(x, combine = FALSE, allmeta = FALSE, origmeta = FALSE, prettymeta = TRUE, ...) {
+econdata_long <- function(x, combine = FALSE, allmeta = FALSE, origmeta = FALSE, prettymeta = TRUE, conceptname = TRUE, ...) {
   if(is.null(attributes(x))) {
-    res <- lapply(add_version_names(x), econdata_long, combine, allmeta, origmeta, prettymeta)
+    res <- lapply(add_version_names(x), econdata_long, combine, allmeta, origmeta, prettymeta, conceptname)
     return(if(combine) rbindlist(res, use.names = TRUE, fill = TRUE) else res)
   }
   meta <- if(prettymeta) get_metadata(x) else NULL
@@ -135,7 +146,7 @@ econdata_long <- function(x, combine = FALSE, allmeta = FALSE, origmeta = FALSE,
        fmutate(date = as.Date(date), code = qF(code)) |>
        frename(OBS_VALUE = "value")
   m <- attr(x, "metadata")
-  meta <- lapply(x, econdata_extract_metadata, allmeta && !combine, origmeta, meta) |>
+  meta <- lapply(x, econdata_extract_metadata, allmeta && !combine, origmeta, meta, conceptname) |>
           rbindlist(use.names = origmeta, fill = origmeta)
   if(origmeta) names(meta) <- tolower(names(meta))
   meta$code <- if(allmeta && !combine) names(x) else names(x)[names(x) %in% levels(d$code)]
