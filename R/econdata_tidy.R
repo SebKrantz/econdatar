@@ -11,20 +11,20 @@ null2NA <- function(x) if(is.null(x)) NA_character_ else x
 
 make_meta_label <- function(m, meta, conceptname = TRUE) {
   lab <- NULL
-  if(conceptname) {
+  if(conceptname) { # Exclude addition of these concept names...
+    cn_excl <- c("MNEMONIC", "LABEL", "PRICE_CONCEPT", "SEASONAL_ADJUST", "FREQ", "UNIT_MULT", "MEASURE", "BASE_PER")
     for (l in names(m)) {
-      ml <- meta[[l]]
-      if(ml$is_dimension) {
-        cl <- unclass(ml$codelist$codes)
+      cl <- unclass(meta[[l]]$codelist$codes)
+      if(length(cl)) { # Formerly: if(meta[[l]]$is_dimension)
         add <- cl[[2L]][which(cl[[1L]] == m[[l]])]
-        if(l != "MNEMONIC" && length(cn <- ml$concept$name)) add <- paste(cn, add, sep = ": ")
+        if(l %!in% cn_excl && length(cn <- meta[[l]]$concept$name)) add <- paste(cn, add, sep = ": ")
         lab <- c(lab, add)
       }
     }
   } else {
     for (l in names(m)) {
-      if(meta[[l]]$is_dimension) {
-        cl <- unclass(meta[[l]]$codelist$codes)
+      cl <- unclass(meta[[l]]$codelist$codes)
+      if(length(cl)) { # Formerly: if(meta[[l]]$is_dimension)
         lab <- c(lab, cl[[2L]][which(cl[[1L]] == m[[l]])])
       }
     }
